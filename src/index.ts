@@ -29,8 +29,23 @@ import { concatMap, multicast } from 'rxjs/operators';
        ********/
 
 
+function defer() {
+	  var res, rej;
 
+	  var promise: any = new Promise((resolve, reject) => {
+		    res = resolve;
+		    rej = reject;
+	  });
 
+	  promise.resolve = res;
+	  promise.reject = rej;
+
+	  return promise;
+}
+
+const promiseA = defer();
+const promiseB = defer();
+const promiseC = defer();
 
 // Helper constants and functions
 const cyan = '\x1b[36m%s\x1b[0m'
@@ -83,7 +98,6 @@ const ob = new Observable(sub => {
 
     // clear any pending timeout on teardown
     return () => {
-        console.log('unsubscribing from source')
         clearTimeout(timeout)
     };
 });
@@ -110,6 +124,7 @@ multicasted
     .subscribe({
         complete: () => {
             cyanLog('ObserverA received all values');
+            promiseA.resolve()
         },
         next: (val: any) => {
             cyanLog(`ObserverA finished: ${val}`);
@@ -129,6 +144,7 @@ multicasted
     .subscribe({
         complete: () => {
             purpleLog('ObserverB received all values');
+            promiseB.resolve()
         },
         next: (val: any) => {
             purpleLog(`ObserverB finished: ${val}`);
@@ -148,10 +164,21 @@ multicasted
     .subscribe({
         complete: () => {
             yellowLog('ObserverC received all values');
+            promiseC.resolve()
         },
         next: (val: any) => {
             yellowLog(`ObserverC finished: ${val}`);
         }
     });
 
-multicasted.connect();
+// connect returns a subscription which we can use
+const subscribed = multicasted.connect()
+
+// I believe we still need to unsubscribe manually, because we cannot use refCount
+// This is a somewhat hackish demo of unsubscribing
+// a more reactive way might be to use forkJoin to create a new observable
+Promise.all([promiseA, promiseB, promiseC])
+    .then(() => {
+        console.log('done! unsubscribing')
+        subscribed.unsubscribe()
+    })
