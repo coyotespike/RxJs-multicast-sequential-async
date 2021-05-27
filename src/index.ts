@@ -8,7 +8,7 @@ import { concatMap, multicast } from 'rxjs/operators';
         and async yet strictly sequential processing of values.
 
         It models (for instance) a stream of values produced at inconsistent times, with multiple
-        processes that do some work with those vaues, then upload the value to a remote data store, like S3.
+        processes that do some work with those values, then upload the value to a remote data store.
 
         At the same time, the uploading must proceed sequentially. In our case we are writing to a CSV file.
         The rows have to stay in the same order. Therefore, the same process cannot start working on the
@@ -80,7 +80,7 @@ const ob = new Observable(sub => {
     let timeout: any = null;
     let count = 1;
 
-    // recursively send a random number to the subscriber
+    // recursively send a number to the subscriber
     // after a random delay
     (function push() {
         timeout = setTimeout(
@@ -135,8 +135,8 @@ multicasted
     .pipe(
         // concatMap ensures previous value finishes processing before next value
         concatMap(async(val: any ) => {
-            await sleepRandomInterval()
             // Models async side effect, e.g. uploading to S3
+            await sleepRandomInterval()
             purpleLog(`ObserverB pipeline: ${val}`);
             return val
         })
@@ -162,8 +162,10 @@ multicasted
         })
     )
     .subscribe({
-        complete: () => {
+        complete: async () => {
             yellowLog('ObserverC received all values');
+            await sleepRandomInterval()
+            yellowLog('ObserverC waited');
             promiseC.resolve()
         },
         next: (val: any) => {
