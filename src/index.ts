@@ -2,8 +2,37 @@ import { Observable, Subject } from 'rxjs';
 import { concatMap, multicast } from 'rxjs/operators';
 
 
-// Helper constants and functions
+/*******
 
+        This is a demonstration of handling async production of values, multicast observers,
+        and async yet strictly sequential processing of values.
+
+        It models (for instance) a stream of values produced at inconsistent times, with multiple
+        processes that do some work with those vaues, then upload the value to a remote data store, like S3.
+
+        At the same time, the uploading must proceed sequentially. In our case we are writing to a CSV file.
+        The rows have to stay in the same order. Therefore, the same process cannot start working on the
+        next-emitted value until the previous value has uploaded already.
+
+        In other words, we need the iterator to send values ASAP, and each worker process to upload to S3 ASAP,
+        but we also need each worker process to keep the values in order even if one S3 upload takes a long time.
+
+        RxJs lets us do all of that.
+
+        An Observable takes the values from the iterator, and sends it as a stream to multicasted observers.
+        Each observer waits to process the next value until it's finished the previous value.
+
+        If you run this file multiple times, you will note that occasionally one worker/observer completes
+        all its values before the the others have really started on their values. But each worker/observer
+        processes each value in the correct sequence.
+
+       ********/
+
+
+
+
+
+// Helper constants and functions
 const cyan = '\x1b[36m%s\x1b[0m'
 const purple = "\x1b[35m"
 const yello = "\x1b[33m"
@@ -53,27 +82,24 @@ const ob = new Observable(sub => {
     })();
 
     // clear any pending timeout on teardown
-    return () => clearTimeout(timeout);
+    return () => {
+        console.log('unsubscribing from source')
+        clearTimeout(timeout)
+    };
 });
-
-
-const subject = new Subject();
-const multicasted = ob.pipe(
-    multicast(subject)
-) as any;
-
 
 
 // subjects are observers and observables
 // We can multicast to them as observers
 // But they have their own pipelines as observables
-const subject1 = new Subject();
-const subject2 = new Subject();
-const subject3 = new Subject();
+const subject = new Subject();
+const multicasted = ob.pipe(
+    multicast(subject)
+) as any;
 
-
-subject1
+multicasted
     .pipe(
+        // concatMap ensures previous value finishes processing before next value
         concatMap(async(val: any ) => {
             // Models async side effect, e.g. uploading to S3
             await sleepRandomInterval()
@@ -88,10 +114,11 @@ subject1
         next: (val: any) => {
             cyanLog(`ObserverA finished: ${val}`);
         }
-    });
+    })
 
-subject2
+multicasted
     .pipe(
+        // concatMap ensures previous value finishes processing before next value
         concatMap(async(val: any ) => {
             await sleepRandomInterval()
             // Models async side effect, e.g. uploading to S3
@@ -108,8 +135,9 @@ subject2
         }
     });
 
-subject3
+multicasted
     .pipe(
+        // concatMap ensures previous value finishes processing before next value
         concatMap(async(val: any ) => {
             // Models async side effect, e.g. uploading to S3
             await sleepRandomInterval()
@@ -126,7 +154,4 @@ subject3
         }
     });
 
-multicasted.subscribe(subject1);
-multicasted.subscribe(subject2);
-multicasted.subscribe(subject3);
 multicasted.connect();
