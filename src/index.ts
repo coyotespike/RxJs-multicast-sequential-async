@@ -1,5 +1,5 @@
-import { Observable, Subject } from 'rxjs';
-import { concatMap, multicast } from 'rxjs/operators';
+import { ConnectableObservable, forkJoin, lastValueFrom, Observable, Subject } from 'rxjs';
+import { concatMap, multicast, publish, takeUntil } from 'rxjs/operators';
 
 
 /*******
@@ -97,6 +97,8 @@ const ob = new Observable(sub => {
     })();
 
     // clear any pending timeout on teardown
+    // This is called almost immediately, apparently piping to multicast
+      // lets us automatically unsubscribe
     return () => {
         clearTimeout(timeout)
     };
@@ -106,10 +108,10 @@ const ob = new Observable(sub => {
 // subjects are observers and observables
 // We can multicast to them as observers
 // But they have their own pipelines as observables
-const subject = new Subject();
+// publish operator calls multicast(new Subject()) for us
 const multicasted = ob.pipe(
-    multicast(subject)
-) as any;
+    publish()
+) as ConnectableObservable<number>;
 
 multicasted
     .pipe(
