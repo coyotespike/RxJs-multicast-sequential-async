@@ -1,5 +1,5 @@
-import { ConnectableObservable, firstValueFrom, forkJoin, isObservable, lastValueFrom, Observable } from 'rxjs';
-import { concatMap, publish, takeLast, tap } from 'rxjs/operators';
+import { ConnectableObservable, lastValueFrom, Observable } from 'rxjs';
+import { concatMap, publish } from 'rxjs/operators';
 
 
 /*******
@@ -98,8 +98,6 @@ const multicasted = ob.pipe(
     publish()
 ) as ConnectableObservable<number>;
 
-// You cannot add any explicit subscribes here.
-
 const observerA = multicasted
     .pipe(
         // concatMap ensures previous value finishes processing before next value
@@ -108,13 +106,18 @@ const observerA = multicasted
             await sleepRandomInterval()
             cyanLog(`ObserverA pipeline: ${val}`);
             return val
-        }),
-        takeLast(1),
-        tap((lastValue: number) => {
-            cyanLog(`ObserverA received all values, lastValue: ${lastValue}`);
-            cyanLog('ObserverA waited');
         })
     )
+
+observerA
+    .subscribe({
+        complete: () => {
+            cyanLog('ObserverA received all values');
+        },
+        next: (val: any) => {
+            cyanLog(`ObserverA finished: ${val}`);
+        }
+    })
 
 const observerB = multicasted
     .pipe(
@@ -124,12 +127,19 @@ const observerB = multicasted
             await sleepRandomInterval()
             purpleLog(`ObserverB pipeline: ${val}`);
             return val
-        }),
-        takeLast(1),
-        tap((lastValue: number) => {
-            purpleLog(`ObserverB received all values, lastValue: ${lastValue}`);
         })
     )
+
+observerB
+    .subscribe({
+        complete: () => {
+            purpleLog('ObserverB received all values');
+            subscribed.unsubscribe()
+        },
+        next: (val: any) => {
+            purpleLog(`ObserverB finished: ${val}`);
+        }
+    });
 
 const observerC = multicasted
     .pipe(
@@ -139,49 +149,32 @@ const observerC = multicasted
             await sleepRandomInterval()
             yellowLog(`ObserverC pipeline: ${val}`);
             return val
-        }),
-        takeLast(1),
-        tap(async(lastValue: number) => {
-            yellowLog(`ObserverC received all values, lastValue: ${lastValue}`);
+        })
+    )
+
+observerC
+    .subscribe({
+        complete: async () => {
+            yellowLog('ObserverC received all values');
             // Demonstrate an async task after all values completed, like awaiting S3
             await sleepRandomInterval()
             yellowLog('ObserverC waited');
-        }),
-    )
+        },
+        next: (val: any) => {
+            yellowLog(`ObserverC finished: ${val}`);
+        }
+    });
 
 // connect returns a subscription which we can use
 const subscribed = multicasted.connect();
 
-// Be sure not to add any subscriptions above
-// forkJoin creates a subscription here
-// multiple subscriptions will trigger a new run
-// and all observers process the same value twice
-
-const joined = forkJoin([observerA, observerB, observerC])
-joined
-    .subscribe({
-        // Models completing a task after all workers have finished
-        // For example sending an email notification
-        // we can just wrap all finishing logic in the forkJoin subscribe
-        complete: () => {
-            console.info('ForkJoin finished processing');
-            console.log('done! unsubscribing')
-            subscribed.unsubscribe()
-        },
-        next: (args: any) => {
-            console.log('forkJoin sees: ', args);
-        }
-    });
-
-/*
-  If we need to unsubscribe, we cannot use refCount and must do it manually
-  or we may not need to, because the whole process should exit, and GC will clean up
-  Unsubscribing from forkJoin early cancels execution, but multicasted continues
-  lastValueFrom(joined) results in a promise rejection
-  I lean towards leaving forkJoined alone
-  */
-
+// We may still need to unsubscribe manually, because we cannot use refCount
+// otoh we may not need to unsubscribe, because the whole process should exit, and GC will clean up
 async function execute() {
+    // we cannot use forkJoin, because forkJoin and lastValueFrom create a new subscription
+    // a new subscription triggers a new run
+    // and all observers process the same value twice
+    // instead use a single time, on the source
     const lastValue = await lastValueFrom(multicasted)
 
     redLog(`Source has emitted all values, last value: ${lastValue}`)
