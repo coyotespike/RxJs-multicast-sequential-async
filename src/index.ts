@@ -32,10 +32,12 @@ import { concatMap, publish } from 'rxjs/operators';
 const cyan = '\x1b[36m%s\x1b[0m'
 const purple = "\x1b[35m"
 const yello = "\x1b[33m"
+const red = "\x1b[31m"
 const colorLog = (color: string) => (message: string) => console.log(color, message)
 const cyanLog = colorLog(cyan)
 const purpleLog = colorLog(purple)
 const yellowLog = colorLog(yello)
+const redLog = colorLog(red)
 
 function timeout(ms: number) {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -46,7 +48,7 @@ async function sleepRandomInterval() {
 }
 
 function getRandomDelay() {
-    return Math.random() * 1000
+    return Math.random() * 5000 // up to 5 seconds
 }
 
 function getRandomInt(min: number, max: number) {
@@ -79,8 +81,9 @@ const ob = new Observable(sub => {
 
     // clear any pending timeout on teardown
     // This is called almost immediately, apparently piping to multicast
-      // lets us automatically unsubscribe
+    //// lets us automatically unsubscribe
     return () => {
+        redLog(`Original observable completed and unsubscribed`)
         clearTimeout(timeout)
     };
 });
@@ -173,7 +176,8 @@ async function execute() {
     // instead use a single time, on the source
     const lastValue = await lastValueFrom(multicasted)
 
-    console.log('Source has emitted all values', lastValue)
+    redLog(`Source has emitted all values, last value: ${lastValue}`)
     subscribed.unsubscribe()
+    redLog(`We are now unsubscribed from multicast source`)
 }
 execute()
