@@ -1,5 +1,5 @@
-import { ConnectableObservable, forkJoin, lastValueFrom, Observable, Subject } from 'rxjs';
-import { concatMap, multicast, publish, takeUntil } from 'rxjs/operators';
+import { ConnectableObservable, lastValueFrom, Observable } from 'rxjs';
+import { concatMap, publish } from 'rxjs/operators';
 
 
 /*******
@@ -27,25 +27,6 @@ import { concatMap, multicast, publish, takeUntil } from 'rxjs/operators';
         processes each value in the correct sequence.
 
        ********/
-
-
-function defer() {
-	  var res, rej;
-
-	  var promise: any = new Promise((resolve, reject) => {
-		    res = resolve;
-		    rej = reject;
-	  });
-
-	  promise.resolve = res;
-	  promise.reject = rej;
-
-	  return promise;
-}
-
-const promiseA = defer();
-const promiseB = defer();
-const promiseC = defer();
 
 // Helper constants and functions
 const cyan = '\x1b[36m%s\x1b[0m'
@@ -113,7 +94,7 @@ const multicasted = ob.pipe(
     publish()
 ) as ConnectableObservable<number>;
 
-multicasted
+const observerA = multicasted
     .pipe(
         // concatMap ensures previous value finishes processing before next value
         concatMap(async(val: any ) => {
@@ -123,17 +104,18 @@ multicasted
             return val
         })
     )
+
+observerA
     .subscribe({
         complete: () => {
             cyanLog('ObserverA received all values');
-            promiseA.resolve()
         },
         next: (val: any) => {
             cyanLog(`ObserverA finished: ${val}`);
         }
     })
 
-multicasted
+const observerB = multicasted
     .pipe(
         // concatMap ensures previous value finishes processing before next value
         concatMap(async(val: any ) => {
@@ -143,17 +125,19 @@ multicasted
             return val
         })
     )
+
+observerB
     .subscribe({
         complete: () => {
             purpleLog('ObserverB received all values');
-            promiseB.resolve()
+            subscribed.unsubscribe()
         },
         next: (val: any) => {
             purpleLog(`ObserverB finished: ${val}`);
         }
     });
 
-multicasted
+const observerC = multicasted
     .pipe(
         // concatMap ensures previous value finishes processing before next value
         concatMap(async(val: any ) => {
@@ -163,12 +147,14 @@ multicasted
             return val
         })
     )
+
+observerC
     .subscribe({
         complete: async () => {
             yellowLog('ObserverC received all values');
+            // Demonstrate an async task after all values completed, like awaiting S3
             await sleepRandomInterval()
             yellowLog('ObserverC waited');
-            promiseC.resolve()
         },
         next: (val: any) => {
             yellowLog(`ObserverC finished: ${val}`);
@@ -176,13 +162,18 @@ multicasted
     });
 
 // connect returns a subscription which we can use
-const subscribed = multicasted.connect()
+const subscribed = multicasted.connect();
 
-// I believe we still need to unsubscribe manually, because we cannot use refCount
-// This is a somewhat hackish demo of unsubscribing
-// a more reactive way might be to use forkJoin to create a new observable
-Promise.all([promiseA, promiseB, promiseC])
-    .then(() => {
-        console.log('done! unsubscribing')
-        subscribed.unsubscribe()
-    })
+// We may still need to unsubscribe manually, because we cannot use refCount
+// otoh we may not need to unsubscribe, because the whole process should exit, and GC will clean up
+async function execute() {
+    // we cannot use forkJoin, because forkJoin and lastValueFrom create a new subscription
+    // a new subscription triggers a new run
+    // and all observers process the same value twice
+    // instead use a single time, on the source
+    const lastValue = await lastValueFrom(multicasted)
+
+    console.log('Source has emitted all values', lastValue)
+    subscribed.unsubscribe()
+}
+execute()

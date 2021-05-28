@@ -16,7 +16,7 @@ or for [Node](https://github.com/thlorenz/v8-perf/blob/master/memory-profiling.m
 This is really astounding because DevTools lets us profile memory usage, AND use the
 function execution stack to trace to the offending code. 
 
-The memory allocation timeline seems much faster than simply relying on
+The memory allocation timeline approach seems much faster than simply relying on
 snapshots and the types of objects to track down the offending code.
 
 
